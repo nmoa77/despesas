@@ -23,6 +23,25 @@ function cloudCanonical(value) {
 }
 const cloudJson = () => cloudCanonical(data);
 const cloudRemoteJson = () => cloudRemote ? cloudCanonical(cloudRemote.data) : null;
+function cloudDifferenceSummary() {
+  if (!cloudRemote) return "Não existem dados na nuvem.";
+  const local = JSON.parse(cloudJson()), remote = JSON.parse(cloudRemoteJson());
+  const fields = [
+    ["incomeDefault","rendimento base"],
+    ["income","rendimentos mensais"],
+    ["templates","despesas recorrentes"],
+    ["transactions","registos e pagamentos"],
+    ["bankBalances","saldos das contas"],
+    ["dismissed","avisos dispensados"]
+  ];
+  const mismatches = fields.filter(([key]) => cloudCanonical(local[key] === undefined ? {} : {v:local[key]}) !== cloudCanonical(remote[key] === undefined ? {} : {v:remote[key]})).map(([,name]) => name);
+  return mismatches.length ? "Diferenças encontradas: " + mismatches.join(", ") + ". Mantém o backup e escolhe a versão correta." : "Os dados diferem apenas em campos auxiliares; não foi feita nenhuma substituição.";
+}
+function cloudConflictNotice() {
+  cloudReady = false;
+  cloudNotice("⚠️ " + cloudDifferenceSummary());
+}
+
 const cloudHasData = obj => !!(obj && (
   (obj.templates && obj.templates.length) ||
   (obj.transactions && Object.keys(obj.transactions).length) ||
@@ -178,7 +197,7 @@ async function cloudConnect() {
       cloudReady = true; cloudSyncedJson = cloudJson();
       cloudNotice("✅ Dados locais e da nuvem coincidem.");
     } else {
-      cloudNotice("⚠️ Existem dados locais e na nuvem diferentes. Escolhe qual versão queres utilizar. Não foi substituído nenhum dado.");
+      cloudConflictNotice();
     }
   } catch(e) { cloudNotice("⚠️ Falha ao ligar: "+e.message); }
   render();
@@ -265,10 +284,14 @@ async function cloudPull() {
       return cloudNotice("Ainda não existem dados na nuvem. Podes enviar os dados deste dispositivo.");
     }
     if (!cloudReady) {
-      cloudNotice("⚠️ Escolhe «Usar dados da nuvem» ou «Enviar os dados deste dispositivo» para ligar sem perder dados.");
+      if (cloudJson() === cloudRemoteJson()) {
+        cloudReady = true;
+        cloudSyncedJson = cloudJson();
+        cloudNotice("✅ Dados locais e da nuvem coincidem. Sincronização reativada.");
+      } else cloudConflictNotice();
     } else if (localChanged) {
       cloudReady = false;
-      cloudNotice("⚠️ Existem alterações locais por enviar. Escolhe a versão a manter.");
+      cloudConflictNotice();
     } else if (cloudJson() !== cloudRemoteJson()) {
       cloudAdoptRemote();
       cloudNotice("✅ Novas alterações recebidas da nuvem.");
