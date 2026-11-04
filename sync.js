@@ -11,14 +11,24 @@ const cloudHasData = obj => !!(obj && (
   (obj.templates && obj.templates.length) ||
   (obj.transactions && Object.keys(obj.transactions).length) ||
   (obj.income && Object.keys(obj.income).length) ||
-  Number(obj.incomeDefault || 0)
+  Number(obj.incomeDefault || 0) ||
+  (obj.bankBalances && Object.keys(obj.bankBalances).length)
 ));
 function cloudNotice(message) {
   cloudStatus = message;
   const el = document.getElementById("cloudStatus");
   if (el) el.textContent = message;
   const header = document.querySelector("header .status");
-  if (header) header.textContent = cloudReady ? "☁️ Sincronizado" : "🔒 Local · " + (cloudSession ? "nuvem por confirmar" : "sem sessão");
+  if (header) {
+    const busy = /A guardar|A verificar|A contactar|A sincronizar/.test(message);
+    const error = /⚠️|Falha|pausada|expirada|diferentes|sem ligação/i.test(message);
+    const ok = cloudReady && !busy && !error && /✅|atualizado|coincidem|guardad|recebid/i.test(message);
+    header.classList.toggle("sync-ok",ok);
+    header.classList.toggle("sync-wait",busy);
+    header.classList.toggle("sync-error",error);
+    header.textContent = busy ? "☁️ A sincronizar…" : error ? "⚠️ Verificar sincronização" : ok ? "✅ Sincronizado" : cloudSession ? "🔒 Nuvem por confirmar" : "🔒 Dados locais";
+    header.title = message;
+  }
 }
 function cloudPanel() {
   if (page !== "definicoes") return;
