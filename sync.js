@@ -6,7 +6,23 @@ const CLOUD_TOKEN_KEY = "despesas_cloud_session_v1";
 let cloudSession = null, cloudReady = false, cloudRevision = null, cloudRemote = null;
 let cloudSyncedJson = null, cloudBusy = false, cloudStatus = "Não ligado", cloudRetry = false;
 try { cloudSession = JSON.parse(localStorage.getItem(CLOUD_TOKEN_KEY) || "null"); } catch {}
-const cloudJson = () => JSON.stringify(data);
+// O Supabase usa JSONB e pode devolver as propriedades noutra ordem.
+// Comparar JSON.stringify diretamente fazia surgir falsos conflitos após refresh.
+function cloudCanonical(value) {
+  const normalize = v => {
+    if (Array.isArray(v)) return v.map(normalize);
+    if (v && typeof v === "object") {
+      const o = {};
+      for (const key of Object.keys(v).sort()) o[key] = normalize(v[key]);
+      return o;
+    }
+    return v;
+  };
+  const original = value && typeof value === "object" ? value : {};
+  return JSON.stringify(normalize({...blank(), ...original, bankBalances: original.bankBalances || {}}));
+}
+const cloudJson = () => cloudCanonical(data);
+const cloudRemoteJson = () => cloudRemote ? cloudCanonical(cloudRemote.data) : null;
 const cloudHasData = obj => !!(obj && (
   (obj.templates && obj.templates.length) ||
   (obj.transactions && Object.keys(obj.transactions).length) ||
@@ -158,7 +174,7 @@ async function cloudConnect() {
     } else if (!cloudHasData(data)) {
       cloudAdoptRemote();
       cloudNotice("✅ Dados da nuvem carregados neste dispositivo.");
-    } else if (cloudJson() === JSON.stringify(cloudRemote.data)) {
+    } else if (cloudJson() === cloudRemoteJson()) {
       cloudReady = true; cloudSyncedJson = cloudJson();
       cloudNotice("✅ Dados locais e da nuvem coincidem.");
     } else {
@@ -180,7 +196,7 @@ async function cloudUseRemote() {
   try {
     await cloudReadRemote();
     if (!cloudRemote) return cloudNotice("Ainda não existem dados na nuvem.");
-    if (cloudHasData(data) && cloudJson() !== JSON.stringify(cloudRemote.data)) {
+    if (cloudHasData(data) && cloudJson() !== cloudRemoteJson()) {
       if (!confirm("Isto vai substituir os dados deste navegador pelos dados da nuvem. Queres continuar?")) return;
       exportBackup();
     }
@@ -253,7 +269,7 @@ async function cloudPull() {
     } else if (localChanged) {
       cloudReady = false;
       cloudNotice("⚠️ Existem alterações locais por enviar. Escolhe a versão a manter.");
-    } else if (cloudJson() !== JSON.stringify(cloudRemote.data)) {
+    } else if (cloudJson() !== cloudRemoteJson()) {
       cloudAdoptRemote();
       cloudNotice("✅ Novas alterações recebidas da nuvem.");
     } else {
